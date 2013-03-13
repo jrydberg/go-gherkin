@@ -24,23 +24,23 @@ func TearDown(teardown func()) {
 }
 
 // Pass-through for Runner.RegisterStepDef()
-func RegisterStepDef(pattern string, stepdef func(*World)) {
+func RegisterStepDef(pattern string, stepdef interface{}) {
     DefaultRunner.RegisterStepDef(pattern, stepdef)
 }
 
-func Given(pattern string, stepdef func(*World)) {
+func Given(pattern string, stepdef interface{}) {
     DefaultRunner.RegisterStepDef(pattern, stepdef)
 }
 
-func When(pattern string, stepdef func(*World)) {
+func When(pattern string, stepdef interface{}) {
     DefaultRunner.RegisterStepDef(pattern, stepdef)
 }
 
-func Then(pattern string, stepdef func(*World)) {
+func Then(pattern string, stepdef interface{}) {
     DefaultRunner.RegisterStepDef(pattern, stepdef)
 }
 
-func And(pattern string, stepdef func(*World)) {
+func And(pattern string, stepdef interface{}) {
     DefaultRunner.RegisterStepDef(pattern, stepdef)
 }
 

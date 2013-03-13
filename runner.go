@@ -58,7 +58,7 @@ func createWriterlessRunner() *Runner {
 
 // Register a step definition. This requires a regular expression
 // pattern and a function to execute.
-func (r *Runner) RegisterStepDef(pattern string, f func(*World)) {
+func (r *Runner) RegisterStepDef(pattern string, f interface{}) {
     r.steps = append(r.steps, createstepdef(pattern, f))
 }
 

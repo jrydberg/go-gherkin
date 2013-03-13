@@ -253,7 +253,9 @@ func TestSupportsMultipleMultiLineStepsPerScenario(t *testing.T) {
 func TestAllowsAccessToFirstRegexCapture(t *testing.T) {
     g := createWriterlessRunner()
     captured := ""
-    g.RegisterStepDef("(thing)", func(w *World) { captured = w.GetRegexParam() })
+    g.RegisterStepDef("(thing)", func(w *World, thing string) { 
+        captured = thing
+    })
     g.Execute(`Feature:
         Scenario:
             Given thing
@@ -263,20 +265,83 @@ func TestAllowsAccessToFirstRegexCapture(t *testing.T) {
 }
 
 func TestFailsGracefullyWithOutOfBoundsRegexCaptures(t *testing.T) {
+    panicked := false
     g := createWriterlessRunner()
-    g.RegisterStepDef(".", func(w *World) { w.GetRegexParam() })
+    g.RegisterStepDef(".", func(w *World, x string) { })
 
-    defer func() {
-        r := recover()
-        AssertThat(t, r, Equals("GetRegexParam() called too many times."))
+    func() {
+        defer func() {
+            r := recover()
+            AssertThat(t, r, Equals("Function type mismatch"))
+            panicked = true
+        }()
+
+        g.Execute(`Feature:
+            Scenario:
+                Given .
+        `)
     }()
+
+    AssertThat(t, panicked, IsTrue)
+}
+
+func TestFailsGracefullyWithInvalidFunctionType(t *testing.T) {
+    panicked := false
+    g := createWriterlessRunner()
+    g.RegisterStepDef("(.)", func(w *World, x interface{}) { })
+
+    func() {
+        defer func() {
+            r := recover()
+            AssertThat(t, r, Equals("Function type not supported"))
+            panicked = true
+        }()
+
+        g.Execute(`Feature:
+            Scenario:
+                Given .
+        `)
+    }()
+
+    AssertThat(t, panicked, IsTrue)
+}
+
+func TestFailsGracefullyWithInvalidArguments(t *testing.T) {
+    panicked := false
+    g := createWriterlessRunner()
+    g.RegisterStepDef("(.)", func(w *World, x int) { 
+        t.Fail()
+    })
+
+    func() {
+        defer func() {
+            recover()
+            panicked = true
+        }()
+
+        g.Execute(`Feature:
+            Scenario:
+                Given x
+        `)
+    }()
+
+    AssertThat(t, panicked, IsTrue)
+}
+
+func TestSupportsArguments(t *testing.T) {
+    g := createWriterlessRunner()
+    g.RegisterStepDef("(.*),(.*),(.*),(.*),(.*),(.*),(.*),(.*)",
+        func(w *World, 
+            b1 bool, i8 int8, i16 int16, i32 int32, i64 int64, i int, 
+            f32 float32, f64 float64) { 
+    })
 
     g.Execute(`Feature:
         Scenario:
-            Given .
+            Given true,127,255,255,255,255,0.3,0.4
     `)
-
 }
+
 
 func DISABLED_TestOnlyExecutesStepsBelowScenarioLine(t *testing.T) {
     g := createWriterlessRunner()

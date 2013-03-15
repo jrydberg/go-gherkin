@@ -18,6 +18,10 @@ type World struct {
 func (w *World) Errorf(format string, args ...interface{}) {
     w.gotAnError = true
     if w.output != nil {
-        fmt.Fprintf(w.output, format, args)
+        if len(args) == 0 {
+            fmt.Fprintf(w.output, format)
+        } else {
+            fmt.Fprintf(w.output, format, args)
+        }
     }
 }

@@ -287,6 +287,19 @@ func PrintReport(rpt Report, output io.Writer) {
     fmt.Fprintf(output, "%d scenarios\n%d steps%s\n", rpt.scenarioCount, totalSteps, subset)
 }
 
+func (r *Runner) RunFeature(t matchers.Errorable, filename string) {
+    file, err := os.Open(filename)
+    if err != nil {
+        t.Errorf(err.Error())
+    }
+    data, _ := ioutil.ReadAll(file)
+    rpt := r.Execute(string(data))
+    PrintReport(rpt, r.output)
+    if rpt.failedSteps > 0 {
+        t.Errorf("Failed %s", file)
+    }
+}
+
 // Once the step definitions are Register()'d, use Run() to
 // locate all *.feature files within the feature/ subdirectory
 // of the current directory.

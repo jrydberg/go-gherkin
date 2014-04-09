@@ -51,6 +51,6 @@ func SetOutput(output io.Writer) {
 
 // Pass-through for Runner.Run()
 // This should be called after everything else.
-func Run(t matchers.Errorable) {
-    DefaultRunner.Run(t)
+func Run(t matchers.Errorable, ctx interface{}) {
+    DefaultRunner.Run(t, ctx)
 }

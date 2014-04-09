@@ -5,6 +5,25 @@ import (
     . "github.com/tychofreeman/go-matchers"
 )
 
+type Context struct {
+    wasCalled bool
+    firstWasCalled bool
+    secondWasCalled bool
+    actionWasCalled bool
+    secondActionCalled bool
+    wasGivenRun bool
+    wasThenRun bool
+    givenData []map[string]string
+    thenData []map[string]string
+    whenData []map[string]string
+    captured string
+    timesRun int
+    wasRun bool
+    setUpWasCalled bool
+    tearDownWasCalled bool
+    setUpCalledBeforeStep bool
+}
+
 var featureText = `Feature: My Feature
     Scenario: Scenario 1
         Given the first setup
@@ -19,20 +38,20 @@ var featureText = `Feature: My Feature
     Scenario: Scenario 3
         * the third setup
         When     the third action has leading spaces
-        When the third action has trailing spaces               
+        When the third action has trailing spaces
     This is ignored`
 
 func assertMatchCalledOrNot(t *testing.T, step string, pattern string, isCalled bool) {
-    wasCalled := false
-    f := func(w *World) {
-        wasCalled = true
+    f := func(w *World, ctx *Context) {
+        ctx.wasCalled = true
     }
 
     g := createWriterlessRunner()
     g.RegisterStepDef(pattern, f)
 
-    g.Execute(step)
-    AssertThat(t, wasCalled, Equals(isCalled))
+    ctx := &Context{}
+    g.Execute(step, ctx)
+    AssertThat(t, ctx.wasCalled, Equals(isCalled))
 }
 
 func matchingFunctionIsCalled(t *testing.T, step string, pattern string) {
@@ -52,17 +71,17 @@ func TestAvoidsNonMatchingMethod(t *testing.T) {
 }
 
 func TestCallsOnlyFirstMatchingMethod(t *testing.T) {
-    wasCalled := false
-    first := func(w *World) { }
-    second := func(w *World) {
-        wasCalled = true
+    first := func(w *World, ctx *Context) { }
+    second := func(w *World, ctx *Context) {
+        ctx.wasCalled = true
     }
 
+    c := &Context{}
     g := createWriterlessRunner()
     g.RegisterStepDef(".", first)
     g.RegisterStepDef(".", second)
-    g.Execute("Given only the first step is called")
-    AssertThat(t, wasCalled, Equals(false))
+    g.Execute("Given only the first step is called", c)
+    AssertThat(t, c.wasCalled, Equals(false))
 }
 
 func TestRemovesGivenFromMatchLine(t *testing.T) {
@@ -100,129 +119,125 @@ func TestRemovesTrailingSpacesFromMatchLine(t *testing.T) {
 func TestMultipleStepsAreCalled(t *testing.T) {
     g := createWriterlessRunner()
 
-    firstWasCalled := false
-    g.RegisterStepDef("^the first setup$", func(w *World) {
-        firstWasCalled = true
+    g.RegisterStepDef("^the first setup$", func(w *World, ctx *Context) {
+        ctx.firstWasCalled = true
     })
 
-    secondWasCalled := false
-    g.RegisterStepDef("^the first action$", func(w *World) {
-        secondWasCalled = true
+    g.RegisterStepDef("^the first action$", func(w *World, ctx *Context) {
+        ctx.secondWasCalled = true
     })
 
-    g.Execute(featureText)
-    AssertThat(t, firstWasCalled, IsTrue)
-    AssertThat(t, secondWasCalled, IsTrue)
+    c := &Context{}
+    g.Execute(featureText, c)
+    AssertThat(t, c.firstWasCalled, IsTrue)
+    AssertThat(t, c.secondWasCalled, IsTrue)
 }
 
 func TestPendingSkipsTests(t *testing.T) {
     g := createWriterlessRunner()
 
-    g.RegisterStepDef("^the first setup$", func(w *World) { Pending() })
-    actionWasCalled := false
-    g.RegisterStepDef("^the first action$", func(w *World) { actionWasCalled = true })
+    g.RegisterStepDef("^the first setup$", func(w *World, ctx *Context) { Pending() })
+    g.RegisterStepDef("^the first action$", func(w *World, ctx *Context) { ctx.actionWasCalled = true })
 
-    g.Execute(featureText)
-    AssertThat(t, actionWasCalled, IsFalse)
+    c := &Context{}
+    g.Execute(featureText, c)
+    AssertThat(t, c.actionWasCalled, IsFalse)
 }
 
 func TestPendingDoesntSkipSecondScenario(t *testing.T) {
     g := createWriterlessRunner()
 
-    g.RegisterStepDef("^the first setup$", func(w *World) { Pending() })
-    g.RegisterStepDef("^the second setup$", func(w *World) { } )
-    secondActionCalled := false
-    g.RegisterStepDef("^the second action$", func(w *World) { secondActionCalled = true })
+    g.RegisterStepDef("^the first setup$", func(w *World, ctx *Context) { Pending() })
+    g.RegisterStepDef("^the second setup$", func(w *World, ctx *Context) { } )
+    g.RegisterStepDef("^the second action$", func(w *World, ctx *Context) { ctx.secondActionCalled = true })
 
-    g.Execute(featureText)
-    AssertThat(t, secondActionCalled, Equals(true))
+    c := &Context{}
+    g.Execute(featureText, c)
+    AssertThat(t, c.secondActionCalled, Equals(true))
 }
 
 func TestBackgroundIsRunBeforeEachScenario(t *testing.T) {
+    c := &Context{}
     g := createWriterlessRunner()
-    wasCalled := false
-    g.RegisterStepDef("^background$", func(w *World) { wasCalled = true })
-    g.Execute(`Feature: 
+    g.RegisterStepDef("^background$", func(w *World, ctx *Context) { ctx.wasCalled = true })
+    g.Execute(`Feature:
         Background:
             Given background
         Scenario:
             Then this
-    `)
+    `, c)
 
-    AssertThat(t, wasCalled, IsTrue)
+    AssertThat(t, c.wasCalled, IsTrue)
 }
 
 func TestCallsSeUptBeforeScenario(t *testing.T) {
+    c := &Context{}
     g := createWriterlessRunner()
-    setUpWasCalled := false
-    g.SetSetUpFn(func() { setUpWasCalled = true })
+    g.SetSetUpFn(func(ctx *Context) { ctx.setUpWasCalled = true })
 
-    setUpCalledBeforeStep := false
-    g.RegisterStepDef(".", func(w *World) { setUpCalledBeforeStep = setUpWasCalled })
+    g.RegisterStepDef(".", func(w *World, ctx *Context) { ctx.setUpCalledBeforeStep = ctx.setUpWasCalled })
     g.Execute(`Feature:
         Scenario:
-            Then this`)
+            Then this`, c)
 
-    AssertThat(t, setUpCalledBeforeStep, IsTrue)
+    AssertThat(t, c.setUpCalledBeforeStep, IsTrue)
 }
 
 func TestCallsTearDownBeforeScenario(t *testing.T) {
+    c := &Context{}
     g := createWriterlessRunner()
-    tearDownWasCalled := false
-    g.SetTearDownFn(func() { tearDownWasCalled = true })
+    g.SetTearDownFn(func(ctx *Context) { ctx.tearDownWasCalled = true })
 
     g.Execute(`Feature:
         Scenario:
-            Then this`)
-    
-    AssertThat(t, tearDownWasCalled, IsTrue)
+            Then this`, c)
+
+    AssertThat(t, c.tearDownWasCalled, IsTrue)
 }
 
 func TestPassesTableListToMultiLineStep(t *testing.T) {
+    c := &Context{}
     g := createWriterlessRunner()
-    var data []map[string]string
-    g.RegisterStepDef(".", func(w *World) { data = w.MultiStep })
+    g.RegisterStepDef(".", func(w *World, ctx *Context) { ctx.thenData = w.MultiStep })
     g.Execute(`Feature:
         Scenario:
             Then you should see these people
                 |name|email|
                 |Bob |bob@bob.com|
-    `)
+    `, c)
 
     expectedData := []map[string]string{
         map[string]string{"name":"Bob", "email":"bob@bob.com"},
     }
-    AssertThat(t, data, Equals(expectedData))
+    AssertThat(t, c.thenData, Equals(expectedData))
 }
 
 func TestErrorsIfTooFewFieldsInMultiLineStep(t *testing.T) {
+    c := &Context{}
     g := createWriterlessRunner()
-    wasGivenRun := false
-    wasThenRun := false
     // Assertions before end of test...
     defer func() {
         recover()
-        AssertThat(t, wasGivenRun, IsFalse)
-        AssertThat(t, wasThenRun, IsFalse)
+        AssertThat(t, c.wasGivenRun, IsFalse)
+        AssertThat(t, c.wasThenRun, IsFalse)
     }()
 
-    g.RegisterStepDef("given", func(w *World) { wasGivenRun = true })
-    g.RegisterStepDef("then", func(w *World) { wasThenRun = true })
+    g.RegisterStepDef("given", func(w *World, ctx *Context) { ctx.wasGivenRun = true })
+    g.RegisterStepDef("then", func(w *World, ctx *Context) { ctx.wasThenRun = true })
 
     g.Execute(`Feature:
         Scenario:
             Given given
                 |name|addr|
                 |bob|
-            Then then`)
+            Then then`, c)
 }
 
 func TestSupportsMultipleMultiLineStepsPerScenario(t *testing.T) {
+    c := &Context{}
     g := createWriterlessRunner()
-    var givenData []map[string]string
-    var whenData []map[string]string
-    g.RegisterStepDef("given", func(w *World) { givenData = w.MultiStep })
-    g.RegisterStepDef("when", func(w *World) { whenData = w.MultiStep })
+    g.RegisterStepDef("given", func(w *World, ctx *Context) { ctx.givenData = w.MultiStep })
+    g.RegisterStepDef("when", func(w *World, ctx *Context) { ctx.whenData = w.MultiStep })
 
     g.Execute(`Feature:
         Scenario:
@@ -234,7 +249,7 @@ func TestSupportsMultipleMultiLineStepsPerScenario(t *testing.T) {
                 |breed|height|
                 |wolf|2|
                 |shihtzu|.5|
-    `)
+    `, c)
 
     expectedGivenData := []map[string]string{
         map[string]string{ "name":"Bob", "email":"bob@bob.com"},
@@ -245,29 +260,29 @@ func TestSupportsMultipleMultiLineStepsPerScenario(t *testing.T) {
         map[string]string{"breed":"wolf", "height":"2"},
         map[string]string{"breed":"shihtzu", "height":".5"},
     }
-    
-    AssertThat(t, givenData, Equals(expectedGivenData))
-    AssertThat(t, whenData, Equals(expectedWhenData))
+
+    AssertThat(t, c.givenData, Equals(expectedGivenData))
+    AssertThat(t, c.whenData, Equals(expectedWhenData))
 }
 
 func TestAllowsAccessToFirstRegexCapture(t *testing.T) {
+    c := &Context{}
     g := createWriterlessRunner()
-    captured := ""
-    g.RegisterStepDef("(thing)", func(w *World, thing string) { 
-        captured = thing
+    g.RegisterStepDef("(thing)", func(w *World, ctx *Context, thing string) {
+        ctx.captured = thing
     })
     g.Execute(`Feature:
         Scenario:
             Given thing
-    `)
+    `, c)
 
-    AssertThat(t, captured, Equals("thing"))
+    AssertThat(t, c.captured, Equals("thing"))
 }
 
 func TestFailsGracefullyWithOutOfBoundsRegexCaptures(t *testing.T) {
     panicked := false
     g := createWriterlessRunner()
-    g.RegisterStepDef(".", func(w *World, x string) { })
+    g.RegisterStepDef(".", func(w *World, ctx *Context, x string) { })
 
     func() {
         defer func() {
@@ -279,7 +294,7 @@ func TestFailsGracefullyWithOutOfBoundsRegexCaptures(t *testing.T) {
         g.Execute(`Feature:
             Scenario:
                 Given .
-        `)
+        `, &Context{})
     }()
 
     AssertThat(t, panicked, IsTrue)
@@ -288,7 +303,7 @@ func TestFailsGracefullyWithOutOfBoundsRegexCaptures(t *testing.T) {
 func TestFailsGracefullyWithInvalidFunctionType(t *testing.T) {
     panicked := false
     g := createWriterlessRunner()
-    g.RegisterStepDef("(.)", func(w *World, x interface{}) { })
+    g.RegisterStepDef("(.)", func(w *World, ctx *Context, x interface{}) { })
 
     func() {
         defer func() {
@@ -300,7 +315,7 @@ func TestFailsGracefullyWithInvalidFunctionType(t *testing.T) {
         g.Execute(`Feature:
             Scenario:
                 Given .
-        `)
+        `, &Context{})
     }()
 
     AssertThat(t, panicked, IsTrue)
@@ -309,7 +324,7 @@ func TestFailsGracefullyWithInvalidFunctionType(t *testing.T) {
 func TestFailsGracefullyWithInvalidArguments(t *testing.T) {
     panicked := false
     g := createWriterlessRunner()
-    g.RegisterStepDef("(.)", func(w *World, x int) { 
+    g.RegisterStepDef("(.)", func(w *World, ctx *Context, x int) {
         t.Fail()
     })
 
@@ -322,7 +337,7 @@ func TestFailsGracefullyWithInvalidArguments(t *testing.T) {
         g.Execute(`Feature:
             Scenario:
                 Given x
-        `)
+        `, &Context{})
     }()
 
     AssertThat(t, panicked, IsTrue)
@@ -331,38 +346,38 @@ func TestFailsGracefullyWithInvalidArguments(t *testing.T) {
 func TestSupportsArguments(t *testing.T) {
     g := createWriterlessRunner()
     g.RegisterStepDef("(.*),(.*),(.*),(.*),(.*),(.*),(.*),(.*)",
-        func(w *World, 
-            b1 bool, i8 int8, i16 int16, i32 int32, i64 int64, i int, 
-            f32 float32, f64 float64) { 
+        func(w *World, ctx *Context,
+            b1 bool, i8 int8, i16 int16, i32 int32, i64 int64, i int,
+            f32 float32, f64 float64) {
     })
 
     g.Execute(`Feature:
         Scenario:
             Given true,127,255,255,255,255,0.3,0.4
-    `)
+    `, &Context{})
 }
 
 
 func DISABLED_TestOnlyExecutesStepsBelowScenarioLine(t *testing.T) {
+    c := &Context{}
     g := createWriterlessRunner()
-    wasRun := false
-    g.RegisterStepDef(".", func(w *World) { wasRun = true })
+    g.RegisterStepDef(".", func(w *World, ctx *Context) { ctx.wasRun = true })
     g.Execute(`Feature:
-        Given .`)
+        Given .`, c)
 
-    AssertThat(t, wasRun, IsFalse)
+    AssertThat(t, c.wasRun, IsFalse)
 }
 
 func TestScenarioOutlineWithoutExampleDoesNotExecute(t *testing.T) {
+    c := &Context{}
     g := createWriterlessRunner()
-    wasRun := false
-    g.RegisterStepDef(".", func(w *World) { wasRun = true})
+    g.RegisterStepDef(".", func(w *World, ctx *Context) { ctx.wasRun = true})
     g.Execute(`Feature:
         Scenario Outline:
             Given .
-    `)
+    `, c)
 
-    AssertThat(t, wasRun, IsFalse)
+    AssertThat(t, c.wasRun, IsFalse)
 }
 
 func TestScenarioOutlineReplacesFieldWithValueInExample(t *testing.T) {
@@ -392,9 +407,9 @@ func TestScenarioOutlineSupportsMultipleLines(t *testing.T) {
 }
 
 func TestExecutesScenarioOncePerLineInExample(t *testing.T) {
+    c := &Context{}
     g := createWriterlessRunner()
-    timesRun := 0
-    g.RegisterStepDef(".", func(w *World) { timesRun++ })
+    g.RegisterStepDef(".", func(w *World, ctx *Context) { ctx.timesRun++ })
     g.Execute(`Feature:
         Scenario Outline:
             Given .
@@ -402,21 +417,21 @@ func TestExecutesScenarioOncePerLineInExample(t *testing.T) {
             |scenario num|
             |first|
             |second|
-    `)
+    `, c)
 
-    AssertThat(t, timesRun, Equals(2))
+    AssertThat(t, c.timesRun, Equals(2))
 }
 
 func TestBackgroundDoesntExecuteBackgroundWhenRun(t *testing.T) {
+    c := &Context{}
     g := createWriterlessRunner()
-    wasRun := false
-    g.RegisterStepDef(".", func(w *World) { wasRun = true })
+    g.RegisterStepDef(".", func(w *World, ctx *Context) { ctx.wasRun = true })
     g.Execute(`Feature:
         Background:
             Given .
-   `)
+   `, c)
 
-   AssertThat(t, wasRun, IsFalse)
+   AssertThat(t, c.wasRun, IsFalse)
 }
 
 // Support PyStrings?

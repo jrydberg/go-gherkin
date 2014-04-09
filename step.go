@@ -41,11 +41,11 @@ func (s *step) recoverPending() {
     }
 }
 
-func (currStep *step) executeStepDef(steps []stepdef) bool {
+func (currStep *step) executeStepDef(steps []stepdef, ctx interface{}) bool {
     defer currStep.recoverPending()
     for _, stepd := range steps {
             //fmt.Printf("Executing step %s with stepdef %d (%v)\n", currStep, i, stepd)
-        if stepd.execute(currStep, &currStep.errors) {
+        if stepd.execute(currStep, &currStep.errors, ctx) {
             return true
         }
     }

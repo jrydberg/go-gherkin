@@ -14,7 +14,7 @@ func (ms MockScenario) AddStep(s step) {
 func (ms MockScenario) Last() *step {
     return nil
 }
-func (ms MockScenario) Execute([]stepdef, io.Writer) Report {
+func (ms MockScenario) Execute([]stepdef, io.Writer, interface{}) Report {
     return ms.rpt
 }
 func (ms MockScenario) IsBackground() bool {

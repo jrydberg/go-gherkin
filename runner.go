@@ -8,6 +8,7 @@ import (
     "io/ioutil"
     "path/filepath"
     "os"
+    "reflect"
     matchers "github.com/tychofreeman/go-matchers"
 )
 
@@ -15,11 +16,12 @@ type Runner struct {
     steps []stepdef
     background Scenario
     isExample bool
-    setUp func()
-    tearDown func()
+    setUp interface{}
+    tearDown interface{}
     currScenario Scenario
     scenarios []Scenario
     output io.Writer
+    ctx interface{}
 }
 
 func (r *Runner) addStepLine(line, orig string) {
@@ -35,19 +37,19 @@ func (r *Runner) currStepLine() step {
 }
 
 // Register a set-up function to be called at the beginning of each scenario
-func (r *Runner) SetSetUpFn(setUp func()) {
+func (r *Runner) SetSetUpFn(setUp interface{}) {
     r.setUp = setUp
 }
 
 // Register a tear-down function to be called at the end of each scenario
-func (r *Runner) SetTearDownFn(tearDown func()) {
+func (r *Runner) SetTearDownFn(tearDown interface{}) {
     r.tearDown = tearDown
 }
 
 // The recommended way to create a gherkin.Runner object.
 func CreateRunner() *Runner {
     s := []Scenario{}
-    return &Runner{[]stepdef{}, nil, false, nil, nil, nil, s, os.Stdout}
+    return &Runner{[]stepdef{}, nil, false, nil, nil, nil, s, os.Stdout, nil}
 }
 
 func createWriterlessRunner() *Runner {
@@ -62,21 +64,32 @@ func (r *Runner) RegisterStepDef(pattern string, f interface{}) {
     r.steps = append(r.steps, createstepdef(pattern, f))
 }
 
+func (r *Runner) callFunc(f interface{}) {
+    t := reflect.TypeOf(f)
+    in := make([]reflect.Value, t.NumIn())
+    if len(in) != 1 {
+        panic("Function type mismatch")
+    }
+    in[0] = reflect.ValueOf(r.ctx)
+    m := reflect.ValueOf(f)
+    m.Call(in)
+}
+
 func (r *Runner) callSetUp() {
     if r.setUp != nil {
-        r.setUp()
+        r.callFunc(r.setUp)
     }
 }
 
 func (r *Runner) callTearDown() {
     if r.tearDown != nil {
-        r.tearDown()
+        r.callFunc(r.tearDown)
     }
 }
 
 func (r *Runner) runBackground() {
     if r.background != nil {
-        r.background.Execute(r.steps, r.output)
+        r.background.Execute(r.steps, r.output, r.ctx)
     }
 }
 
@@ -224,7 +237,7 @@ func (r *Runner) executeScenario(scenario Scenario) Report{
             r.callSetUp()
             r.runBackground()
         }
-        rpt = scenario.Execute(r.steps, r.output)
+        rpt = scenario.Execute(r.steps, r.output, r.ctx)
         if !scenario.IsJustPrintable() {
             r.callTearDown()
         }
@@ -246,9 +259,14 @@ func (r *Runner) executeScenarios(scenarios []Scenario) Report {
     return rpt
 }
 
+func (r *Runner) resetWithContext(ctx interface{}) {
+    r.ctx = ctx
+}
+
 // Once the step definitions are Register()'d, use Execute() to
 // parse and execute Gherkin data.
-func (r *Runner) Execute(file string) Report {
+func (r *Runner) Execute(file string, ctx interface{}) Report {
+    r.resetWithContext(ctx)
     lines := strings.Split(file, "\n")
     for _, line := range lines {
         r.step(line)
@@ -287,13 +305,13 @@ func PrintReport(rpt Report, output io.Writer) {
     fmt.Fprintf(output, "%d scenarios\n%d steps%s\n", rpt.scenarioCount, totalSteps, subset)
 }
 
-func (r *Runner) RunFeature(t matchers.Errorable, filename string) {
+func (r *Runner) RunFeature(t matchers.Errorable, ctx interface{}, filename string) {
     file, err := os.Open(filename)
     if err != nil {
         t.Errorf(err.Error())
     }
     data, _ := ioutil.ReadAll(file)
-    rpt := r.Execute(string(data))
+    rpt := r.Execute(string(data), ctx)
     PrintReport(rpt, r.output)
     if rpt.failedSteps > 0 {
         t.Errorf("Failed %s", file)
@@ -303,7 +321,7 @@ func (r *Runner) RunFeature(t matchers.Errorable, filename string) {
 // Once the step definitions are Register()'d, use Run() to
 // locate all *.feature files within the feature/ subdirectory
 // of the current directory.
-func (r *Runner) Run(t matchers.Errorable) {
+func (r *Runner) Run(t matchers.Errorable, ctx interface{}) {
     featureMatch, _ := re.Compile(`.*\.feature`)
     filepath.Walk("features", func(walkPath string, info os.FileInfo, err error) error {
         if err != nil {
@@ -314,7 +332,7 @@ func (r *Runner) Run(t matchers.Errorable) {
         } else if !info.IsDir() && featureMatch.MatchString(info.Name()) {
             file, _ := os.Open(walkPath)
             data, _ := ioutil.ReadAll(file)
-            rpt := r.Execute(string(data))
+            rpt := r.Execute(string(data), ctx)
             PrintReport(rpt, r.output)
             r.scenarios = []Scenario{}
             r.background = nil

@@ -46,7 +46,8 @@ func (so *scenario_outline) IsBackground() bool { return false }
 
 func (scen *scenario_outline) IsJustPrintable() bool { return false }
 
-func (so *scenario_outline) Execute(s []stepdef, output io.Writer) Report {
+func (so *scenario_outline) Execute(s []stepdef, output io.Writer,
+        ctx interface{}) Report {
     return Report{}
 }
 
@@ -61,7 +62,8 @@ func (uls *printable_line) Last() *step {
     return nil
 }
 
-func (uls *printable_line)Execute(steps []stepdef, output io.Writer) Report {
+func (uls *printable_line)Execute(steps []stepdef, output io.Writer,
+        ctx interface{}) Report {
     if output != nil {
         fmt.Fprintf(output, "%s\n", uls.line)
     }
@@ -77,7 +79,7 @@ func (scen *printable_line) IsJustPrintable() bool { return true }
 type Scenario interface {
     AddStep(step)
     Last() *step
-    Execute([]stepdef, io.Writer) Report
+    Execute([]stepdef, io.Writer, interface{}) Report
     IsBackground() bool
     IsJustPrintable() bool
 }
@@ -106,16 +108,17 @@ func (s *scenario) Last() *step {
     return nil
 }
 
-func (s *scenario) Execute(stepdefs []stepdef, output io.Writer) Report {
+func (s *scenario) Execute(stepdefs []stepdef, output io.Writer,
+        ctx interface{}) Report {
     rpt := Report{}
     if output != nil {
-        fmt.Fprintf(output, s.orig + "\n")
+        fmt.Fprintf(output, "%s\n", s.orig)
     }
     isPending := false
     for _, line := range s.steps {
         stepIsFound := true
         if !isPending {
-            stepIsFound = line.executeStepDef(stepdefs)
+            stepIsFound = line.executeStepDef(stepdefs, ctx)
         }
         if !isPending && line.isPending {
             rpt.pendingSteps++

@@ -12,6 +12,7 @@ type World struct {
     MultiStep []map[string]string
     output io.Writer
     gotAnError bool
+    ctx interface{}
 }
 
 // Allows World to be used with the go-matchers AssertThat() function.

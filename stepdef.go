@@ -16,13 +16,14 @@ func (s stepdef) call(w *World) {
     t := reflect.TypeOf(s.f)
     in := make([]reflect.Value, t.NumIn())
     in[0] = reflect.ValueOf(w)
-    if len(in) != len(w.regexParams) {
+    if len(in) != len(w.regexParams) + 1 {
         panic("Function type mismatch")
     }
-    for i := 1; i < len(in); i++ {
+    in[1] = reflect.ValueOf(w.ctx)
+    for i := 2; i < len(in); i++ {
         var val interface{}
         var err error
-        itp := w.regexParams[i]
+        itp := w.regexParams[i - 1]
         switch t.In(i).Kind() {
         case reflect.Bool:
             val, err = strconv.ParseBool(itp)
@@ -66,11 +67,15 @@ func createstepdef(p string, f interface{}) stepdef {
     return stepdef{r, f}
 }
 
-func (s stepdef) execute(line *step, output io.Writer) bool {
+func (s stepdef) execute(line *step, output io.Writer, ctx interface{}) bool {
     if s.r.MatchString(line.String()) {
         if s.f != nil {
             substrs := s.r.FindStringSubmatch(line.String())
-            w := &World{regexParams:substrs, MultiStep:line.mldata, output: output} 
+            w := &World{
+                regexParams:substrs,
+                MultiStep:line.mldata,
+                output: output,
+                ctx: ctx}
             defer func() { line.hasErrors = w.gotAnError }()
             s.call(w)
         }
